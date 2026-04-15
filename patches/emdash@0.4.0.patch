@@ -1,0 +1,154 @@
+diff --git a/src/api/public-url.ts b/src/api/public-url.ts
+index cb5afb9b7595c518fef51fd639ede8cadfc84632..6a28c2f1acbd8a3ad88fa948e508d2b689f0e716 100644
+--- a/src/api/public-url.ts
++++ b/src/api/public-url.ts
+@@ -82,3 +82,17 @@ export function getPublicOrigin(url: URL, config?: EmDashConfig): string {
+ export function getPublicUrl(url: URL, config: EmDashConfig | undefined, path: string): string {
+ 	return `${getPublicOrigin(url, config)}${path}`;
+ }
++export function getForwardedRequestUrl(request: Request): URL {
++	const reqUrl = new URL(request.url);
++
++	const forwardedProto =
++		request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim() ||
++		reqUrl.protocol.replace(":", "");
++
++	const forwardedHost =
++		request.headers.get("x-forwarded-host")?.split(",")[0]?.trim() ||
++		request.headers.get("host")?.split(",")[0]?.trim() ||
++		reqUrl.host;
++
++	return new URL(`${forwardedProto}://${forwardedHost}${reqUrl.pathname}${reqUrl.search}`);
++}
+diff --git a/src/astro/routes/api/auth/passkey/options.ts b/src/astro/routes/api/auth/passkey/options.ts
+index b228798c1e12502f22778e76e4447852ae341ac5..f27e45f7028969f2d07e9b7fddd92b5cb9e37d89 100644
+--- a/src/astro/routes/api/auth/passkey/options.ts
++++ b/src/astro/routes/api/auth/passkey/options.ts
+@@ -12,7 +12,7 @@ export const prerender = false;
+ 
+ import { createKyselyAdapter } from "@emdash-cms/auth/adapters/kysely";
+ import { generateAuthenticationOptions } from "@emdash-cms/auth/passkey";
+-
++import { getForwardedRequestUrl } from "../../../../../api/public-url.js";
+ import { apiError, apiSuccess, handleError } from "#api/error.js";
+ import { isParseError, parseOptionalBody } from "#api/parse.js";
+ import { getPublicOrigin } from "#api/public-url.js";
+@@ -60,7 +60,7 @@ export const POST: APIRoute = async ({ request, locals }) => {
+ 		// If no email provided, allowCredentials will be undefined (allow any discoverable credential)
+ 
+ 		// Get passkey config
+-		const url = new URL(request.url);
++		const url = getForwardedRequestUrl(request);
+ 		const options = new OptionsRepository(emdash.db);
+ 		const siteName = (await options.get<string>("emdash:site_title")) ?? undefined;
+ 		const siteUrl = getPublicOrigin(url, emdash?.config);
+diff --git a/src/astro/routes/api/auth/passkey/register/options.ts b/src/astro/routes/api/auth/passkey/register/options.ts
+index 37610101447c463ed8c5fb00ac7257cf6ca280d3..b46f7bfafb219887be1d6bcf513727def7101760 100644
+--- a/src/astro/routes/api/auth/passkey/register/options.ts
++++ b/src/astro/routes/api/auth/passkey/register/options.ts
+@@ -10,7 +10,7 @@ export const prerender = false;
+ 
+ import { createKyselyAdapter } from "@emdash-cms/auth/adapters/kysely";
+ import { generateRegistrationOptions } from "@emdash-cms/auth/passkey";
+-
++import { getForwardedRequestUrl } from "../../../../../../api/public-url.js";
+ import { apiError, apiSuccess, handleError } from "#api/error.js";
+ import { isParseError, parseOptionalBody } from "#api/parse.js";
+ import { getPublicOrigin } from "#api/public-url.js";
+@@ -50,7 +50,7 @@ export const POST: APIRoute = async ({ request, locals }) => {
+ 		const existingCredentials = await adapter.getCredentialsByUserId(user.id);
+ 
+ 		// Get passkey config
+-		const url = new URL(request.url);
++		const url = getForwardedRequestUrl(request);
+ 		const optionsRepo = new OptionsRepository(emdash.db);
+ 		const siteName = (await optionsRepo.get<string>("emdash:site_title")) ?? undefined;
+ 		const siteUrl = getPublicOrigin(url, emdash?.config);
+diff --git a/src/astro/routes/api/auth/passkey/register/verify.ts b/src/astro/routes/api/auth/passkey/register/verify.ts
+index 367b32f4b20983632803187ff472f994fb9f24c9..23b785cc76a47e62fc48d9eafddb4265587cfc26 100644
+--- a/src/astro/routes/api/auth/passkey/register/verify.ts
++++ b/src/astro/routes/api/auth/passkey/register/verify.ts
+@@ -10,7 +10,7 @@ export const prerender = false;
+ 
+ import { createKyselyAdapter } from "@emdash-cms/auth/adapters/kysely";
+ import { verifyRegistrationResponse, registerPasskey } from "@emdash-cms/auth/passkey";
+-
++import { getForwardedRequestUrl } from "../../../../../../api/public-url.js";
+ import { apiError, apiSuccess } from "#api/error.js";
+ import { isParseError, parseBody } from "#api/parse.js";
+ import { getPublicOrigin } from "#api/public-url.js";
+@@ -56,7 +56,7 @@ export const POST: APIRoute = async ({ request, locals }) => {
+ 		if (isParseError(body)) return body;
+ 
+ 		// Get passkey config
+-		const url = new URL(request.url);
++		const url = getForwardedRequestUrl(request);
+ 		const optionsRepo = new OptionsRepository(emdash.db);
+ 		const siteName = (await optionsRepo.get<string>("emdash:site_title")) ?? undefined;
+ 		const siteUrl = getPublicOrigin(url, emdash?.config);
+diff --git a/src/astro/routes/api/auth/passkey/verify.ts b/src/astro/routes/api/auth/passkey/verify.ts
+index fd13ec497b44cb3fddac192aa2288938e4a38008..69a830c82987b3cf79fe82ae85acbcd5449d0d31 100644
+--- a/src/astro/routes/api/auth/passkey/verify.ts
++++ b/src/astro/routes/api/auth/passkey/verify.ts
+@@ -10,7 +10,7 @@ export const prerender = false;
+ 
+ import { createKyselyAdapter } from "@emdash-cms/auth/adapters/kysely";
+ import { authenticateWithPasskey } from "@emdash-cms/auth/passkey";
+-
++import { getForwardedRequestUrl } from "../../../../../api/public-url.js";
+ import { apiError, apiSuccess, handleError } from "#api/error.js";
+ import { isParseError, parseBody } from "#api/parse.js";
+ import { getPublicOrigin } from "#api/public-url.js";
+@@ -31,7 +31,7 @@ export const POST: APIRoute = async ({ request, locals, session }) => {
+ 		if (isParseError(body)) return body;
+ 
+ 		// Get passkey config
+-		const url = new URL(request.url);
++		const url = getForwardedRequestUrl(request);
+ 		const options = new OptionsRepository(emdash.db);
+ 		const siteName = (await options.get<string>("emdash:site_title")) ?? undefined;
+ 		const siteUrl = getPublicOrigin(url, emdash?.config);
+diff --git a/src/astro/routes/api/setup/admin-verify.ts b/src/astro/routes/api/setup/admin-verify.ts
+index b8197ffad7759359df73b2a0bcc5d28e5b146b40..ae30ce3271515676da121ecb7958ad27cfb757de 100644
+--- a/src/astro/routes/api/setup/admin-verify.ts
++++ b/src/astro/routes/api/setup/admin-verify.ts
+@@ -11,7 +11,7 @@ export const prerender = false;
+ import { Role } from "@emdash-cms/auth";
+ import { createKyselyAdapter } from "@emdash-cms/auth/adapters/kysely";
+ import { verifyRegistrationResponse, registerPasskey } from "@emdash-cms/auth/passkey";
+-
++import { getForwardedRequestUrl } from "../../../../api/public-url.js";
+ import { apiError, apiSuccess, handleError } from "#api/error.js";
+ import { isParseError, parseBody } from "#api/parse.js";
+ import { getPublicOrigin } from "#api/public-url.js";
+@@ -56,7 +56,7 @@ export const POST: APIRoute = async ({ request, locals }) => {
+ 		if (isParseError(body)) return body;
+ 
+ 		// Get passkey config
+-		const url = new URL(request.url);
++		const url = getForwardedRequestUrl(request);
+ 		const siteName = (await options.get<string>("emdash:site_title")) ?? undefined;
+ 		const siteUrl = getPublicOrigin(url, emdash?.config);
+ 		const passkeyConfig = getPasskeyConfig(url, siteName, siteUrl);
+diff --git a/src/astro/routes/api/setup/admin.ts b/src/astro/routes/api/setup/admin.ts
+index 6827e728a9f79cb0d2eeae3de8a371c67ad7b6dc..136206cae724671a6b9a09560e1a65402c99cffb 100644
+--- a/src/astro/routes/api/setup/admin.ts
++++ b/src/astro/routes/api/setup/admin.ts
+@@ -10,7 +10,7 @@ export const prerender = false;
+ 
+ import { createKyselyAdapter } from "@emdash-cms/auth/adapters/kysely";
+ import { generateRegistrationOptions } from "@emdash-cms/auth/passkey";
+-
++import { getForwardedRequestUrl } from "../../../../api/public-url.js";
+ import { apiError, apiSuccess, handleError } from "#api/error.js";
+ import { isParseError, parseBody } from "#api/parse.js";
+ import { getPublicOrigin } from "#api/public-url.js";
+@@ -55,7 +55,7 @@ export const POST: APIRoute = async ({ request, locals }) => {
+ 		});
+ 
+ 		// Get passkey config
+-		const url = new URL(request.url);
++		const url = getForwardedRequestUrl(request);
+ 		const siteName = (await options.get<string>("emdash:site_title")) ?? undefined;
+ 		const siteUrl = getPublicOrigin(url, emdash?.config);
+ 		const passkeyConfig = getPasskeyConfig(url, siteName, siteUrl);
